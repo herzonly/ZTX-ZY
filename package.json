@@ -1,7 +1,7 @@
 {
   "name": "nodejs",
   "version": "1.0.1",
-  "description": "Ini adalah script Bot Telegram dengan struktur bot WhatsApp, kamu bisa meng kostumisasi script ini, tetapi dalam 1 syarat kalo kamu menggunakan script ini tolong jangan dijual",
+  "description": "Script made by HerzaNGT, dont forget to follow my github",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
