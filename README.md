@@ -6,7 +6,7 @@
 
 Selamat datang di script bot Telegram yang dibuat dengan penuh cinta! 💝 Bot ini dibangun lmenggunakan Node.js dan library Telegraf terbaru untuk memberikan pengalaman yang luar biasa kepada pengguna Telegram Anda.
 
-## ✨ Tentang Bot Ini
+## ✨ Tentang script Ini
 
 Bot Telegram ini adalah karya open source yang dapat Anda gunakan dan modifikasi sesuai kebutuhan Anda! 🎨 Dibuat dengan teknologi modern dan mudah dikustomisasi, bot ini siap membantu Anda dalam berbagai aktivitas di Telegram.
 
