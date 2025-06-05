@@ -102,6 +102,8 @@ Jika script ini bermanfaat untuk Anda, dukung pengembangan selanjutnya dengan:
 
 [![Trakteer](https://img.shields.io/badge/Trakteer-FF6B6B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://trakteer.id/herzja)
 
+[![Saweria](https://img.shields.io/badge/Saweria-Donate-orange?logo=buymeacoffee&logoColor=white&style=for-the-badge)](https://saweria.co/herza)
+
 Setiap donasi sangat berarti dan membantu pengembangan script yang lebih baik! 🙏
 
 ## 👨‍💻 Credits & Developer
