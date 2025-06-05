@@ -48,6 +48,7 @@ Sebelum menjalankan bot, Anda **WAJIB** mengisi konfigurasi berikut:
 ```
 
 > 💡 **Tips**: Dapatkan bot token dari [@BotFather](https://t.me/BotFather) di Telegram
+
 > 🌟 **Tips**: Dapatkan User Id Dari[@UserBotInfoBot](https://t.me/UserBotInfoBot) di Telegram
 ## 🚀 Cara Menjalankan Bot
 
