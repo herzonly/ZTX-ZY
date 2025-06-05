@@ -1,4 +1,4 @@
-# 🤖 NMBTZ-TL Bot Script
+# 🤖 ZTX-ZY Bot Script
 
 ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
 ![Node.js](https://img.shields.io/badge/Node.js-43853D?style=for-the-badge&logo=node.js&logoColor=white)
@@ -56,10 +56,10 @@ Ikuti langkah-langkah berikut untuk memulai bot Anda:
 ```bash
 # 1. Clone repository ini
 git clone https://github
-com/herzonly/NMBTZ-TL
+com/herzonly/ZTX-ZY
 
 # 2. Masuk ke direktori project
-cd NMBTZ-TL
+cd ZTX-ZY
 
 # 3. Install dependencies
 npm install
