@@ -1,0 +1,31 @@
+{
+  "name": "nodejs",
+  "version": "1.0.1",
+  "description": "Ini adalah script Bot Telegram dengan struktur bot WhatsApp, kamu bisa meng kostumisasi script ini, tetapi dalam 1 syarat kalo kamu menggunakan script ini tolong jangan dijual",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "telegram",
+    "telegram-bot",
+    "lightweight",
+    "telegraf",
+    "js-telegram"
+  ],
+  "author": "herzonly",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^22.13.11",
+    "chalk": "^3.0.0",
+    "express": "^5.1.0",
+    "lodash": "^4.17.21",
+    "lowdb": "^7.0.1",
+    "notmebotz-tools": "^2.0.13",
+    "syntax-error": "^1.4.0",
+    "telegraf": "^4.16.3",
+    "util": "^0.12.5",
+    "yt-search": "^2.13.1"
+  }
+}
