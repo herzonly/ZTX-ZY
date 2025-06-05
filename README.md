@@ -121,9 +121,9 @@ Terima kasih telah menggunakan script ini! Jangan lupa untuk ⭐ star repository
 
 # 📣 INFORMATION SECTION
 ### Join WA Channel
-![WhatsApp(https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://whatsapp.com/channel/0029VaGVOvq1iUxY6WgHLv2R)
+[![WhatsApp](https://img.shields.io/badge/WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white)](https://whatsapp.com/channel/0029VaGVOvq1iUxY6WgHLv2R)
 ### Join Telegram 
-![Telegram(https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/nmbtz_md)
+[![Telegram](https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/nmbtz_md)
 
 <div align="center">
   <i>Made with 📱 and lots of 🍵</i>
