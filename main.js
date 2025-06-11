@@ -295,8 +295,13 @@ async function checkMediaSupport() {
   global.support = { ffmpeg, ffprobe, convert, magick, gm }
 
   if (!global.support.ffmpeg) {
-    conn.logger.warn("Please install ffmpeg for sending videos (pkg install ffmpeg)")
+    conn.logger.warn("Please install FFMPEG for sending VIDEOS (sudo apt install ffmpeg)")
   }
+
+  if (!global.support.magick) {
+    conn.logger.warn("Please install ImageMagick for sending IMAGES (sudo apt install ffmpeg)")
+  }
+  
 }
 
 checkMediaSupport()
