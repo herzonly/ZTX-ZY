@@ -4,8 +4,13 @@ const util = require("util")
 const isNumber = (x) => typeof x === "number" && !isNaN(x)
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(resolve, ms))
 
+function isRealError(error) {
+  return error instanceof Error || (error && error.constructor && error.constructor.name === "Error")
+}
+
 module.exports = {
   async handler(m) {
+    await global.loadDatabase()
     if (global.db.data == null) return
 
     if (!m) return
@@ -13,6 +18,10 @@ module.exports = {
     try {
       m.exp = 0
       m.limit = false
+
+      if (m.callbackQuery && !m.isSimulated) {
+        await this.telegram.answerCbQuery(m.callbackQuery.id)
+      }
 
       const user = global.db.data.users[m.sender]
       if (typeof user !== "object") global.db.data.users[m.sender] = {}
@@ -24,7 +33,6 @@ module.exports = {
         if (!("registered" in user)) user.registered = false
         if (!("premium" in user)) user.premium = false
         if (!("banned" in user)) user.banned = false
-        if (!("autolevelup" in user)) user.autolevelup = true
         if (!isNumber(user.premiumTime)) user.premiumTime = 0
         if (!isNumber(user.command)) user.command = 0
         if (!isNumber(user.commandTotal)) user.commandTotal = 0
@@ -41,7 +49,6 @@ module.exports = {
           registered: false,
           premium: false,
           banned: false,
-          autolevelup: true,
           premiumTime: 0,
           command: 0,
           commandTotal: 0,
@@ -57,22 +64,14 @@ module.exports = {
       if (chat) {
         if (!("isBanned" in chat)) chat.isBanned = false
         if (!("welcome" in chat)) chat.welcome = true
-        if (!("detect" in chat)) chat.detect = false
         if (!("mute" in chat)) chat.mute = false
-        if (!("antiLink" in chat)) chat.antiLink = false
-        if (!("antiBot" in chat)) chat.antiBot = false
-        if (!("antiToxic" in chat)) chat.antiToxic = false
         if (!("sWelcome" in chat)) chat.sWelcome = "Selamat datang @user di grup @subject!"
         if (!("sBye" in chat)) chat.sBye = "Selamat tinggal @user!"
       } else {
         global.db.data.chats[m.chat] = {
           isBanned: false,
           welcome: true,
-          detect: false,
           mute: false,
-          antiLink: false,
-          antiBot: false,
-          antiToxic: false,
           sWelcome: "Selamat datang @user di grup @subject!",
           sBye: "Selamat tinggal @user!",
         }
@@ -83,26 +82,53 @@ module.exports = {
       const isPrems =
         isROwner || global.db.data.users[m.sender].premiumTime > 0 || global.db.data.users[m.sender].premium
 
+      try {
+        require("./lib/print")(m, this)
+      } catch (e) {
+        console.log(m, m.quoted, e)
+      }
+
+      // Skip jika tidak ada text
+      if (!m.text) return
+
       for (const name in global.plugins) {
         const plugin = global.plugins[name]
         if (!plugin) continue
         if (plugin.disabled) continue
 
         const str2Regex = (str) => str.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&")
-        const _prefix = plugin.customPrefix ? plugin.customPrefix : global.prefix
-        const match = (
-          _prefix instanceof RegExp
-            ? [[_prefix.exec(m.text), _prefix]]
-            : Array.isArray(_prefix)
-              ? _prefix.map((p) => {
-                  const re = p instanceof RegExp ? p : new RegExp(str2Regex(p))
-                  return [re.exec(m.text), re]
-                })
-              : typeof _prefix === "string"
-                ? [[new RegExp(str2Regex(_prefix)).exec(m.text), new RegExp(str2Regex(_prefix))]]
-                : [[[], new RegExp()]]
-        ).find((p) => p[1])
+        
+        // Perbaikan handling prefix
+        let _prefix = plugin.customPrefix || global.prefix || "/"
+        
+        // Pastikan prefix adalah array untuk memudahkan pengecekan
+        if (!Array.isArray(_prefix)) {
+          _prefix = [_prefix]
+        }
 
+        let match = null
+        let usedPrefix = ""
+
+        // Cek setiap prefix yang tersedia
+        for (const prefix of _prefix) {
+          if (prefix instanceof RegExp) {
+            const regexMatch = prefix.exec(m.text)
+            if (regexMatch) {
+              match = [regexMatch, prefix]
+              usedPrefix = regexMatch[0]
+              break
+            }
+          } else {
+            const prefixStr = String(prefix)
+            if (m.text.startsWith(prefixStr)) {
+              match = [[prefixStr], new RegExp(str2Regex(prefixStr))]
+              usedPrefix = prefixStr
+              break
+            }
+          }
+        }
+
+        // Jalankan before function jika ada
         if (typeof plugin.before === "function") {
           if (
             await plugin.before.call(this, m, {
@@ -116,10 +142,11 @@ module.exports = {
             continue
         }
 
+        // Skip jika plugin bukan function
         if (typeof plugin !== "function") continue
 
-        let usedPrefix
-        if ((usedPrefix = (match[0] || "")[0])) {
+        // Lanjutkan jika ada match prefix
+        if (match && usedPrefix) {
           const noPrefix = m.text.replace(usedPrefix, "")
           let [command, ...args] = noPrefix.trim().split` `.filter((v) => v)
           args = args || []
@@ -128,6 +155,7 @@ module.exports = {
           command = (command || "").toLowerCase()
           const fail = plugin.fail || global.dfail
 
+          // Cek apakah command cocok dengan plugin
           const isAccept =
             plugin.command instanceof RegExp
               ? plugin.command.test(command)
@@ -138,8 +166,10 @@ module.exports = {
                   : false
 
           if (!isAccept) continue
+          
           m.plugin = name
 
+          // Cek ban status
           if (m.chat in global.db.data.chats || m.sender in global.db.data.users) {
             const chat = global.db.data.chats[m.chat]
             const user = global.db.data.users[m.sender]
@@ -147,6 +177,7 @@ module.exports = {
             if (user && user.banned) return
           }
 
+          // Cek permission
           if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
             fail("owner", m, this)
             continue
@@ -177,6 +208,7 @@ module.exports = {
           if (xp > 200) m.reply("Ngecit -_-")
           else m.exp += xp
 
+          // Cek limit
           if (!isPrems && plugin.limit && global.db.data.users[m.sender].limit < plugin.limit * 1) {
             this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
             continue
@@ -200,30 +232,48 @@ module.exports = {
             await plugin.call(this, m, extra)
             if (!isPrems) m.limit = m.limit || plugin.limit || false
           } catch (e) {
-            m.error = e
-            console.error(e)
-            if (e) {
+            if (isRealError(e)) {
+              m.error = e
+              console.error(`Plugin Error (${m.plugin}):`, e)
               const text = util.format(e)
               for (const ownerId of global.ownerid) {
-                this.reply(
-                  ownerId,
-                  `*Plugin:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``,
-                )
+                try {
+                  this.reply(
+                    ownerId,
+                    `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``,
+                  )
+                } catch (notifyError) {
+                  console.error("Failed to notify owner:", notifyError)
+                }
               }
-              m.reply(text)
+              try {
+                m.reply(text)
+              } catch (replyError) {
+                console.error("Failed to reply error to user:", replyError)
+              }
+            } else {
+              try {
+                m.reply(String(e))
+              } catch (replyError) {
+                console.error("Failed to reply to user:", replyError)
+              }
             }
           } finally {
             if (typeof plugin.after === "function") {
               try {
                 await plugin.after.call(this, m, extra)
               } catch (e) {
-                console.error(e)
+                console.error(`Plugin After Error (${m.plugin}):`, e)
               }
             }
           }
+          
+          // Break setelah command dijalankan
+          break
         }
       }
 
+      
       const _user = global.db.data.users[m.sender]
       const stats = global.db.data.stats
       if (m) {
@@ -258,51 +308,36 @@ module.exports = {
         }
       }
 
-      _user.chat++
-      _user.chatTotal++
-      _user.lastseen = Date.now()
+      if (_user) {
+        _user.chat++
+        _user.chatTotal++
+        _user.lastseen = Date.now()
+      }
     } catch (e) {
-      console.error(e)
+      console.error("Handler Error:", e)
     }
   },
 
-  async participantsUpdate({ id, participants, action }) {
-    if (global.db.data == null) return
+  async participantsUpdate(ctx) {
+    if (!ctx.myChatMember) return
 
-    const chat = global.db.data.chats[id] || {}
+    const chatId = ctx.chat.id
+    const userId = ctx.myChatMember.new_chat_member.user.id
+    const status = ctx.myChatMember.new_chat_member.status
+
+    const chat = global.db.data.chats[chatId] || {}
     let text = ""
 
-    switch (action) {
-      case "add":
-        if (chat.welcome) {
-          for (const user of participants) {
-            try {
-              const userName = await this.getName(user)
-              const chatName = await this.getName(id)
-              text = (chat.sWelcome || "Selamat datang @user!").replace("@user", userName).replace("@subject", chatName)
-
-              await this.sendMessage(id, { text })
-            } catch (e) {
-              console.error(e)
-            }
-          }
-        }
-        break
-
-      case "remove":
-        if (chat.welcome) {
-          for (const user of participants) {
-            try {
-              const userName = await this.getName(user)
-              text = (chat.sBye || "Selamat tinggal @user!").replace("@user", userName)
-
-              await this.sendMessage(id, { text })
-            } catch (e) {
-              console.error(e)
-            }
-          }
-        }
-        break
+    if (status === "member" && ctx.myChatMember.old_chat_member.status === "left") {
+      if (chat.welcome) {
+        text = (chat.sWelcome || "Selamat datang @user!").replace("@user", `@${userId}`)
+        this.reply(chatId, text)
+      }
+    } else if (status === "left" && ctx.myChatMember.old_chat_member.status === "member") {
+      if (chat.welcome) {
+        text = (chat.sBye || "Selamat tinggal @user!").replace("@user", `@${userId}`)
+        this.reply(chatId, text)
+      }
     }
   },
 }
@@ -311,18 +346,9 @@ global.dfail = (type, m, conn) => {
   const msg = {
     rowner: "Perintah ini hanya dapat digunakan oleh _*OWNER!*_",
     owner: "Perintah ini hanya dapat digunakan oleh _*Owner Bot*_!",
-    admin: "Perintah ini hanya dapat digunakan oleh _*Admin*_!",
     premium: "Perintah ini hanya untuk member _*Premium*_!",
     group: "Perintah ini hanya dapat digunakan di grup!",
     private: "Perintah ini hanya dapat digunakan di Chat Pribadi!",
   }[type]
   if (msg) return m.reply(msg)
 }
-
-let chalk = require('chalk');
-let file = require.resolve(__filename);
-fs.watchFile(file, () => {
-  fs.unwatchFile(file);
-console.log(chalk.redBright(`Update 'handler.js'`));
-  delete require.cache[file];
-});
