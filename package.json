@@ -17,7 +17,6 @@
   "author": "herzonly",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^22.13.11",
     "chalk": "^3.0.0",
     "express": "^5.1.0",
     "lodash": "^4.17.21",
