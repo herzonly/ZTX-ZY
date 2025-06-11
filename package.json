@@ -21,7 +21,7 @@
     "chalk": "^3.0.0",
     "express": "^5.1.0",
     "lodash": "^4.17.21",
-    "lowdb": "^7.0.1",
+    "lowdb": "^2.1.0",
     "notmebotz-tools": "^2.0.13",
     "syntax-error": "^1.4.0",
     "telegraf": "^4.16.3",
