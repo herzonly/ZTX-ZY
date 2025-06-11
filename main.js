@@ -1,36 +1,87 @@
 const { Telegraf } = require("telegraf")
 const fs = require("fs")
 const path = require("path")
+const syntaxError = require("syntax-error")
+const child_process = require("child_process")
 require("./config")
-const print = require ('./lib/print')
 
 const conn = new Telegraf(global.token)
 
+function getWITATime() {
+  const now = new Date()
+  const witaTime = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+  const options = {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZone: "Asia/Makassar",
+    timeZoneName: "longOffset",
+  }
+  const formatted = witaTime.toLocaleString("en-US", options)
+  return `[${formatted.replace(/GMT\+7/, "GMT+0700")} (Western Indonesia Time)]`
+}
+
+conn.logger = {
+  info: (msg) =>
+    console.log(`${chalk.green.bold("INFO")} ${chalk.white.bold(getWITATime())}: ${chalk.cyan.bold(msg)}`),
+  warn: (msg) =>
+    console.log(
+      `${chalk.hex('#FF8800')("WARNING")} ${chalk.white.bold(getWITATime())}: ${chalk.yellow(msg)}`,
+    ),
+  error: (msg) =>
+    console.log(`${chalk.red.bold("ERROR")} ${chalk.white.bold(getWITATime())}: ${chalk.red(msg)}`),
+}
+
 require("./lib/simple")(conn)
 
-global.db = {
-  data: {
+let dbLibrary
+try {
+  dbLibrary = require("lowdb")
+} catch (error) {
+  dbLibrary = require("./lib/lowdb")
+}
+const { Low, JSONFile } = dbLibrary
+
+const adapter = new JSONFile("./database.json")
+global.db = new Low(adapter)
+
+global.loadDatabase = async () => {
+  if (global.db.READ) {
+    return new Promise((resolve) => {
+      const interval = setInterval(() => {
+        if (!global.db.READ) {
+          clearInterval(interval)
+          resolve(global.db.data == null ? global.loadDatabase() : global.db.data)
+        }
+      }, 1000)
+    })
+  }
+
+  if (global.db.data !== null) return
+
+  global.db.READ = true
+  await global.db.read()
+  global.db.READ = false
+  global.db.data = {
     users: {},
     chats: {},
     stats: {},
-  },
-}
-
-global.botStartTime = Date.now()
-
-function loadDatabase() {
-  try {
-    if (fs.existsSync("./database.json")) {
-      global.db.data = JSON.parse(fs.readFileSync("./database.json", "utf8"))
-    }
-  } catch (e) {
-    console.log("Database error:", e)
+    msgs: {},
+    sticker: {},
+    ...(global.db.data || {}),
   }
+  global.db.READ = false
 }
 
-function saveDatabase() {
+async function saveDatabase() {
   try {
-    fs.writeFileSync("./database.json", JSON.stringify(global.db.data, null, 2))
+    if (global.db.data) {
+      await global.db.write()
+    }
   } catch (e) {
     console.log("Save database error:", e)
   }
@@ -61,33 +112,63 @@ function loadPlugins() {
 
 loadPlugins()
 
-fs.watch(pluginsDir, (eventType, filename) => {
-  if (filename && filename.endsWith(".js")) {
-    loadPlugins()
+global.reload = (event, filePath) => {
+  if (/\.js$/.test(filePath)) {
+    const fullFilePath = path.join(pluginsDir, filePath)
+    if (fullFilePath in require.cache) {
+      delete require.cache[fullFilePath]
+      if (fs.existsSync(fullFilePath)) {
+        conn.logger.info(`♻️ Re-requiring plugin '${filePath}'`)
+      } else {
+        conn.logger.warn(`🗑️ Deleted plugin '${filePath}'`)
+        return delete global.plugins[filePath]
+      }
+    } else {
+      conn.logger.info(`🔁 Requiring new plugin '${filePath}'`)
+    }
+
+    const errorCheck = syntaxError(fs.readFileSync(fullFilePath), filePath)
+    if (errorCheck) {
+      conn.logger.error(`❌ Syntax error while loading '${filePath}':\n${errorCheck}`)
+    } else {
+      try {
+        global.plugins[filePath] = require(fullFilePath)
+      } catch (error) {
+        conn.logger.error(error)
+      } finally {
+        global.plugins = Object.fromEntries(Object.entries(global.plugins).sort(([a], [b]) => a.localeCompare(b)))
+      }
+    }
   }
-})
+}
+
+Object.freeze(global.reload)
+fs.watch(path.join(__dirname, "plugins"), global.reload)
+
+global.reloadHandler = () => {
+  return require("./handler")
+}
 
 function smsg(ctx) {
-  if (!ctx.message) return null
+  if (!ctx.message && !ctx.callback_query) return null
 
-  const m = ctx.message
+  const m = ctx.message || ctx.callback_query.message
   const M = {}
 
   M.text = m.text || m.caption || ""
   M.mtype = Object.keys(m)[0]
   M.id = m.message_id
   M.chat = ctx.chat.id
-  M.chatName = ctx.chat.title || ctx.chat.first_name || ctx.chat.username || "Unknown"
   M.sender = ctx.from.id
-  M.firstName = ctx.from.first_name || ""
-  M.lastName = ctx.from.last_name || ""
   M.fromMe = ctx.from.is_bot
-  M.name = `${ctx.from.first_name || ""} ${ctx.from.last_name || ""}`.trim() || ctx.from.username || "Unknown"
-  M.username = ctx.from.username || ""
-  M.tag = ctx.from.username ? `@${ctx.from.username}` : M.name
+  M.name = ctx.from.first_name || ctx.from.username || "Unknown"
   M.isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup"
   M.mentionedJid = []
-  M.messageTime = m.date * 1000
+
+  if (ctx.callback_query) {
+    M.callbackQuery = ctx.callback_query
+    M.data = ctx.callback_query.data
+  }
 
   if (m.entities) {
     m.entities.forEach((entity) => {
@@ -97,14 +178,10 @@ function smsg(ctx) {
     })
   }
 
-  M.fakeObj = {
-    update: ctx.update,
-    botInfo: ctx.botInfo,
-    state: ctx.state,
-  }
+  M.fakeObj = ctx
 
   M.reply = async (text, options = {}) => {
-    return await conn.reply(M.chat, text, { message_id: M.id })
+    return await conn.reply(M.chat, text, { message_id: M.id }, options)
   }
 
   M.copy = () => M
@@ -121,9 +198,6 @@ function smsg(ctx) {
     M.quoted = {
       text: m.reply_to_message.text || m.reply_to_message.caption || "",
       sender: m.reply_to_message.from.id,
-      firstName: m.reply_to_message.from.first_name || "",
-      lastName: m.reply_to_message.from.last_name || "",
-      username: m.reply_to_message.from.username || "",
       message_id: m.reply_to_message.message_id,
       download: async () => {
         if (m.reply_to_message.photo) {
@@ -186,36 +260,51 @@ async function downloadFile(filePath) {
 }
 
 conn.use(async (ctx, next) => {
-  if (ctx.message) {
+  if (ctx.message || ctx.callback_query) {
     const m = smsg(ctx)
-    await print(m, conn)
-    if (m && m.messageTime >= global.botStartTime) {
+    if (m) {
       await require("./handler").handler.call(conn, m)
     }
+  } else if (ctx.myChatMember) {
+    await require("./handler").participantsUpdate.call(conn, ctx)
   }
   return next()
 })
 
-conn.on("new_chat_members", async (ctx) => {
-  if (ctx.message.date * 1000 >= global.botStartTime) {
-    await require("./handler").participantsUpdate.call(conn, {
-      id: ctx.chat.id,
-      participants: ctx.message.new_chat_members.map((user) => user.id),
-      action: "add",
-    })
-  }
-})
+async function checkMediaSupport() {
+  const checks = await Promise.all(
+    [
+      child_process.spawn("ffmpeg"),
+      child_process.spawn("ffprobe"),
+      child_process.spawn("convert"),
+      child_process.spawn("magick"),
+      child_process.spawn("gm"),
+    ].map((spawn) => {
+      return Promise.race([
+        new Promise((resolve) => {
+          spawn.on("close", (exitCode) => resolve(exitCode !== 127))
+        }),
+        new Promise((resolve) => {
+          spawn.on("error", () => resolve(false))
+        }),
+      ])
+    }),
+  )
 
-conn.on("left_chat_member", async (ctx) => {
-  if (ctx.message.date * 1000 >= global.botStartTime) {
-    await require("./handler").participantsUpdate.call(conn, {
-      id: ctx.chat.id,
-      participants: [ctx.message.left_chat_member.id],
-      action: "remove",
-    })
+  const [ffmpeg, ffprobe, convert, magick, gm] = checks
+  global.support = { ffmpeg, ffprobe, convert, magick, gm }
+
+  if (!global.support.ffmpeg) {
+    conn.logger.warn("Please install ffmpeg for sending videos (pkg install ffmpeg)")
   }
-})
+}
+
+checkMediaSupport()
+  .then(() => conn.logger.info("Quick Test Done"))
+  .catch(console.error)
 
 conn.launch()
+console.log("Bot started")
+
 process.once("SIGINT", () => conn.stop("SIGINT"))
 process.once("SIGTERM", () => conn.stop("SIGTERM"))
