@@ -200,7 +200,7 @@ module.exports = {
           else m.exp += xp
 
           if (!isPrems && plugin.limit && global.db.data.users[m.sender].limit < plugin.limit * 1) {
-            this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
+            await this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
             continue
           }
 
@@ -219,7 +219,7 @@ module.exports = {
           }
 
           try {
-            await plugin.call(this, m, extra)
+            const result = await plugin.call(this, m, extra)
             if (!isPrems) m.limit = m.limit || plugin.limit || false
           } catch (e) {
             if (isRealError(e)) {
@@ -228,22 +228,22 @@ module.exports = {
               const text = util.format(e)
               for (const ownerId of global.ownerid) {
                 try {
-                  this.reply(
+                  await this.reply(
                     ownerId,
-                    `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``,
+                    `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``
                   )
                 } catch (notifyError) {
                   console.error("Failed to notify owner:", notifyError)
                 }
               }
               try {
-                m.reply(text)
+                await m.reply(text)
               } catch (replyError) {
                 console.error("Failed to reply error to user:", replyError)
               }
             } else {
               try {
-                m.reply(String(e))
+                await m.reply(String(e))
               } catch (replyError) {
                 console.error("Failed to reply to user:", replyError)
               }
@@ -319,18 +319,18 @@ module.exports = {
     if (status === "member" && ctx.myChatMember.old_chat_member.status === "left") {
       if (chat.welcome) {
         text = (chat.sWelcome || "Selamat datang @user!").replace("@user", `@${userId}`)
-        this.reply(chatId, text)
+        await this.reply(chatId, text)
       }
     } else if (status === "left" && ctx.myChatMember.old_chat_member.status === "member") {
       if (chat.welcome) {
         text = (chat.sBye || "Selamat tinggal @user!").replace("@user", `@${userId}`)
-        this.reply(chatId, text)
+        await this.reply(chatId, text)
       }
     }
   },
 }
 
-global.dfail = (type, m, conn) => {
+global.dfail = async (type, m, conn) => {
   const msg = {
     rowner: "Perintah ini hanya dapat digunakan oleh _*OWNER!*_",
     owner: "Perintah ini hanya dapat digunakan oleh _*Owner Bot*_!",
@@ -338,7 +338,7 @@ global.dfail = (type, m, conn) => {
     group: "Perintah ini hanya dapat digunakan di grup!",
     private: "Perintah ini hanya dapat digunakan di Chat Pribadi!",
   }[type]
-  if (msg) return m.reply(msg)
+  if (msg) return await m.reply(msg)
 }
 
 const file = require.resolve(__filename)
