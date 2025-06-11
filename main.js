@@ -4,6 +4,8 @@ const path = require("path")
 const syntaxError = require("syntax-error")
 const child_process = require("child_process")
 require("./config")
+const chalk = require('chalk')
+
 
 const conn = new Telegraf(global.token)
 
@@ -27,10 +29,10 @@ function getWITATime() {
 
 conn.logger = {
   info: (msg) =>
-    console.log(`${chalk.green.bold("INFO")} ${chalk.white.bold(getWITATime())}: ${chalk.cyan.bold(msg)}`),
+    console.log(`${chalk.green.bold("INFO")} ${chalk.white.bold(getWITATime())}: ${chalk.cyan(msg)}`),
   warn: (msg) =>
     console.log(
-      `${chalk.hex('#FF8800')("WARNING")} ${chalk.white.bold(getWITATime())}: ${chalk.yellow(msg)}`,
+      `${chalk.hex('#FF8800').bold("WARNING")} ${chalk.white.bold(getWITATime())}: ${chalk.yellow(msg)}`,
     ),
   error: (msg) =>
     console.log(`${chalk.red.bold("ERROR")} ${chalk.white.bold(getWITATime())}: ${chalk.red(msg)}`),
@@ -262,6 +264,7 @@ async function downloadFile(filePath) {
 conn.use(async (ctx, next) => {
   if (ctx.message || ctx.callback_query) {
     const m = smsg(ctx)
+    
     if (m) {
       await require("./handler").handler.call(conn, m)
     }
@@ -309,7 +312,7 @@ checkMediaSupport()
   .catch(console.error)
 
 conn.launch()
-console.log("Bot started")
+
 
 process.once("SIGINT", () => conn.stop("SIGINT"))
 process.once("SIGTERM", () => conn.stop("SIGTERM"))
