@@ -1,5 +1,6 @@
 const fs = require("fs")
 const util = require("util")
+const chalk = require("chalk")
 
 const isNumber = (x) => typeof x === "number" && !isNaN(x)
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(resolve, ms))
@@ -88,7 +89,6 @@ module.exports = {
         console.log(m, m.quoted, e)
       }
 
-      // Skip jika tidak ada text
       if (!m.text) return
 
       for (const name in global.plugins) {
@@ -98,10 +98,8 @@ module.exports = {
 
         const str2Regex = (str) => str.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&")
         
-        // Perbaikan handling prefix
         let _prefix = plugin.customPrefix || global.prefix || "/"
         
-        // Pastikan prefix adalah array untuk memudahkan pengecekan
         if (!Array.isArray(_prefix)) {
           _prefix = [_prefix]
         }
@@ -109,7 +107,6 @@ module.exports = {
         let match = null
         let usedPrefix = ""
 
-        // Cek setiap prefix yang tersedia
         for (const prefix of _prefix) {
           if (prefix instanceof RegExp) {
             const regexMatch = prefix.exec(m.text)
@@ -128,7 +125,6 @@ module.exports = {
           }
         }
 
-        // Jalankan before function jika ada
         if (typeof plugin.before === "function") {
           if (
             await plugin.before.call(this, m, {
@@ -142,10 +138,8 @@ module.exports = {
             continue
         }
 
-        // Skip jika plugin bukan function
         if (typeof plugin !== "function") continue
 
-        // Lanjutkan jika ada match prefix
         if (match && usedPrefix) {
           const noPrefix = m.text.replace(usedPrefix, "")
           let [command, ...args] = noPrefix.trim().split` `.filter((v) => v)
@@ -155,7 +149,6 @@ module.exports = {
           command = (command || "").toLowerCase()
           const fail = plugin.fail || global.dfail
 
-          // Cek apakah command cocok dengan plugin
           const isAccept =
             plugin.command instanceof RegExp
               ? plugin.command.test(command)
@@ -169,7 +162,6 @@ module.exports = {
           
           m.plugin = name
 
-          // Cek ban status
           if (m.chat in global.db.data.chats || m.sender in global.db.data.users) {
             const chat = global.db.data.chats[m.chat]
             const user = global.db.data.users[m.sender]
@@ -177,7 +169,6 @@ module.exports = {
             if (user && user.banned) return
           }
 
-          // Cek permission
           if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
             fail("owner", m, this)
             continue
@@ -208,7 +199,6 @@ module.exports = {
           if (xp > 200) m.reply("Ngecit -_-")
           else m.exp += xp
 
-          // Cek limit
           if (!isPrems && plugin.limit && global.db.data.users[m.sender].limit < plugin.limit * 1) {
             this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
             continue
@@ -268,12 +258,10 @@ module.exports = {
             }
           }
           
-          // Break setelah command dijalankan
           break
         }
       }
 
-      
       const _user = global.db.data.users[m.sender]
       const stats = global.db.data.stats
       if (m) {
@@ -352,3 +340,10 @@ global.dfail = (type, m, conn) => {
   }[type]
   if (msg) return m.reply(msg)
 }
+
+const file = require.resolve(__filename)
+fs.watchFile(file, () => {
+  fs.unwatchFile(file)
+  console.log(chalk.redBright("Update handler.js"))
+  delete require.cache[file]
+})
