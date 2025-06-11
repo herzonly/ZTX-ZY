@@ -55,6 +55,16 @@ const handler = async (m, { conn, usedPrefix, command, args, isOwner, isROwner }
       chat.antiBot = isEnable
       break
 
+    case "autodl":
+      if (m.isGroup) {
+        if (!(isAdmin || isOwner)) {
+          global.dfail("admin", m, conn)
+          throw false
+        }
+      }
+      chat.autodl = isEnable
+      break
+
     case "antitoxic":
       if (m.isGroup) {
         if (!(isAdmin || isOwner)) {
@@ -137,6 +147,7 @@ List option:
 | restrict
 | gconly
 | pconly
+| autodl
 | mute 
 
 Contoh:
