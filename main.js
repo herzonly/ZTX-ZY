@@ -6,7 +6,6 @@ const child_process = require("child_process")
 require("./config")
 const chalk = require('chalk')
 
-
 const conn = new Telegraf(global.token)
 
 function getWITATime() {
@@ -270,8 +269,26 @@ conn.use(async (ctx, next) => {
     }
   } else if (ctx.myChatMember) {
     await require("./handler").participantsUpdate.call(conn, ctx)
+  } else if (ctx.chatMember) {
+    await require("./handler").participantsUpdate.call(conn, ctx)
   }
   return next()
+})
+
+conn.on('new_chat_members', async (ctx) => {
+  try {
+    await require("./handler").participantsUpdate.call(conn, ctx)
+  } catch (e) {
+    console.error("Error handling new_chat_members:", e)
+  }
+})
+
+conn.on('left_chat_member', async (ctx) => {
+  try {
+    await require("./handler").participantsUpdate.call(conn, ctx)
+  } catch (e) {
+    console.error("Error handling left_chat_member:", e)
+  }
 })
 
 async function checkMediaSupport() {
@@ -312,7 +329,6 @@ checkMediaSupport()
   .catch(console.error)
 
 conn.launch()
-
 
 process.once("SIGINT", () => conn.stop("SIGINT"))
 process.once("SIGTERM", () => conn.stop("SIGTERM"))
