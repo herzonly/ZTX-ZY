@@ -307,25 +307,81 @@ module.exports = {
   },
 
   async participantsUpdate(ctx) {
-    if (!ctx.myChatMember) return
-
-    const chatId = ctx.chat.id
-    const userId = ctx.myChatMember.new_chat_member.user.id
-    const status = ctx.myChatMember.new_chat_member.status
-
-    const chat = global.db.data.chats[chatId] || {}
-    let text = ""
-
-    if (status === "member" && ctx.myChatMember.old_chat_member.status === "left") {
-      if (chat.welcome) {
-        text = (chat.sWelcome || "Selamat datang @user!").replace("@user", `@${userId}`)
-        await this.reply(chatId, text)
+    try {
+      await global.loadDatabase()
+      
+      let chatId, userId, userName, status, chatTitle, eventType = null
+      
+      if (ctx.myChatMember) {
+        chatId = ctx.chat.id
+        userId = ctx.myChatMember.new_chat_member.user.id
+        userName = ctx.myChatMember.new_chat_member.user.first_name || ctx.myChatMember.new_chat_member.user.username || "Unknown"
+        status = ctx.myChatMember.new_chat_member.status
+        chatTitle = ctx.chat.title || "Unknown Group"
+        
+        if (status === "member" && ctx.myChatMember.old_chat_member.status === "left") {
+          eventType = "join"
+        } else if (status === "left" && ctx.myChatMember.old_chat_member.status === "member") {
+          eventType = "leave"
+        }
+      } else if (ctx.message && ctx.message.new_chat_members) {
+        chatId = ctx.chat.id
+        chatTitle = ctx.chat.title || "Unknown Group"
+        eventType = "join"
+        
+        for (const member of ctx.message.new_chat_members) {
+          userId = member.id
+          userName = member.first_name || member.username || "Unknown"
+          
+          const chat = global.db.data.chats[chatId] || {}
+          if (chat.welcome) {
+            let text = (chat.sWelcome || "Selamat datang @user di grup @subject!")
+              .replace("@user", userName)
+              .replace("@subject", chatTitle)
+            
+            try {
+              await this.sendMessage(chatId, { text: text }, { quoted: null })
+                              
+            } catch (e) {
+              console.error("Error sending welcome message:", e)
+            }
+          }
+        }
+        return
+      } else if (ctx.message && ctx.message.left_chat_member) {
+        chatId = ctx.chat.id
+        userId = ctx.message.left_chat_member.id
+        userName = ctx.message.left_chat_member.first_name || ctx.message.left_chat_member.username || "Unknown"
+        chatTitle = ctx.chat.title || "Unknown Group"
+        eventType = "leave"
       }
-    } else if (status === "left" && ctx.myChatMember.old_chat_member.status === "member") {
-      if (chat.welcome) {
-        text = (chat.sBye || "Selamat tinggal @user!").replace("@user", `@${userId}`)
-        await this.reply(chatId, text)
+      
+      if (!chatId || !userId || !eventType) return
+      
+      const chat = global.db.data.chats[chatId] || {}
+      if (!chat.welcome) return
+      
+      let text = ""
+      
+      if (eventType === "join") {
+        text = (chat.sWelcome || "Selamat datang @user di grup @subject!")
+          .replace("@user", userName)
+          .replace("@subject", chatTitle)
+      } else if (eventType === "leave") {
+        text = (chat.sBye || "Selamat tinggal @user!")
+          .replace("@user", userName)
+          .replace("@subject", chatTitle)
       }
+      
+      if (text) {
+        try {
+          await this.sendMessage(chatId, { text: text }, { quoted: null })
+        } catch (e) {
+          console.error("Error sending participant update message:", e)
+        }
+      }
+    } catch (e) {
+      console.error("Error in participantsUpdate:", e)
     }
   },
 }
@@ -337,6 +393,7 @@ global.dfail = async (type, m, conn) => {
     premium: "Perintah ini hanya untuk member _*Premium*_!",
     group: "Perintah ini hanya dapat digunakan di grup!",
     private: "Perintah ini hanya dapat digunakan di Chat Pribadi!",
+    admin: "Perintah ini hanya dapat digunakan oleh admin grup!",
   }[type]
   if (msg) return await m.reply(msg)
 }
