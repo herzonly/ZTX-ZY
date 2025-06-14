@@ -100,7 +100,9 @@ const handler = async (m, { conn }) => {
   menuText += `📋 Total Commands: ${totalCommands}\n\n`
   menuText += `💡 Tips: Gunakan /daftar untuk mendaftar jika belum terdaftar`
 
-  await conn.sendMessage(m.chat, { text: menuText }, { quoted: { message_id: m.id } })
+  await conn.sendMessage(m.chat, { video: { url: "https://i.supa.codes/lngaD3" },
+  caption: menuText
+                              }, { quoted: { message_id: m.id } })
 }
 
 handler.help = ["menu"]
