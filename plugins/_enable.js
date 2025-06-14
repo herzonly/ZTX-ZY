@@ -62,7 +62,7 @@ const handler = async (m, { conn, usedPrefix, command, args, isOwner, isROwner }
           throw false
         }
       }
-      chat.autodl = isEnable
+      chat.autoDL = isEnable
       break
 
     case "antitoxic":
