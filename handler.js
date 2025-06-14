@@ -68,6 +68,7 @@ module.exports = {
         if (!("mute" in chat)) chat.mute = false
         if (!("sWelcome" in chat)) chat.sWelcome = "Selamat datang @user di grup @subject!"
         if (!("sBye" in chat)) chat.sBye = "Selamat tinggal @user!"
+        if (!("autoDL" in chat)) chat.autoDL = false
       } else {
         global.db.data.chats[m.chat] = {
           isBanned: false,
@@ -75,6 +76,7 @@ module.exports = {
           mute: false,
           sWelcome: "Selamat datang @user di grup @subject!",
           sBye: "Selamat tinggal @user!",
+          autoDL: false,
         }
       }
 
@@ -89,16 +91,93 @@ module.exports = {
         console.log(m, m.quoted, e)
       }
 
-      if (!m.text) return
+      for (const name in global.plugins) {
+        const plugin = global.plugins[name]
+        if (!plugin) continue
+        if (plugin.disabled) continue
+
+        let beforeHandler = null
+        let pluginData = plugin
+
+        if (typeof plugin === 'function') {
+          if (plugin.before && typeof plugin.before === 'function') {
+            beforeHandler = plugin.before
+            pluginData = plugin
+          }
+        } else if (typeof plugin === 'object') {
+          if (plugin.before && typeof plugin.before === 'function') {
+            beforeHandler = plugin.before
+            pluginData = plugin
+          }
+          else if (plugin.default && plugin.default.before && typeof plugin.default.before === 'function') {
+            beforeHandler = plugin.default.before
+            pluginData = plugin.default
+          }
+          else if (plugin.run && plugin.run.before && typeof plugin.run.before === 'function') {
+            beforeHandler = plugin.run.before
+            pluginData = plugin.run
+          }
+        }
+
+        if (beforeHandler) {
+          try {
+            const beforeResult = await beforeHandler.call(this, m, {
+              conn: this,
+              isROwner,
+              isOwner,
+              isPrems,
+              isBotAdmin: m.isBotAdmin,
+              isAdmin: m.isAdmin,
+            })
+            
+            if (beforeResult === false) {
+              console.log(`Plugin ${name} before handler returned false, skipping...`)
+              continue
+            }
+          } catch (e) {
+            console.error(`Plugin Before Error (${name}):`, e)
+          }
+        }
+      }
 
       for (const name in global.plugins) {
         const plugin = global.plugins[name]
         if (!plugin) continue
         if (plugin.disabled) continue
 
+        let pluginData = plugin
+        let pluginHandler = null
+
+        if (typeof plugin === 'function') {
+          pluginHandler = plugin
+          pluginData = plugin
+        } else if (typeof plugin === 'object') {
+          if (plugin.handler && typeof plugin.handler === 'function') {
+            pluginHandler = plugin.handler
+            pluginData = plugin
+          }
+          else if (plugin.default && typeof plugin.default === 'function') {
+            pluginHandler = plugin.default
+            pluginData = plugin.default
+          }
+          else if (plugin.run && plugin.run.async && typeof plugin.run.async === 'function') {
+            pluginHandler = plugin.run.async
+            pluginData = plugin.run
+          }
+          else if (typeof plugin.before === 'function' && !plugin.handler && !plugin.default && !plugin.run) {
+            continue
+          }
+          else {
+            pluginHandler = plugin
+            pluginData = plugin
+          }
+        }
+
+        if (!pluginHandler || typeof pluginHandler !== "function") continue
+
         const str2Regex = (str) => str.replace(/[|\\{}()[\]^$+*?.]/g, "\\$&")
         
-        let _prefix = plugin.customPrefix || global.prefix || "/"
+        let _prefix = pluginData.customPrefix || global.prefix || "/"
         
         if (!Array.isArray(_prefix)) {
           _prefix = [_prefix]
@@ -107,56 +186,49 @@ module.exports = {
         let match = null
         let usedPrefix = ""
 
-        for (const prefix of _prefix) {
-          if (prefix instanceof RegExp) {
-            const regexMatch = prefix.exec(m.text)
-            if (regexMatch) {
-              match = [regexMatch, prefix]
-              usedPrefix = regexMatch[0]
-              break
-            }
-          } else {
-            const prefixStr = String(prefix)
-            if (m.text.startsWith(prefixStr)) {
-              match = [[prefixStr], new RegExp(str2Regex(prefixStr))]
-              usedPrefix = prefixStr
-              break
+        if (m.text) {
+          for (const prefix of _prefix) {
+            if (prefix instanceof RegExp) {
+              const regexMatch = prefix.exec(m.text)
+              if (regexMatch) {
+                match = [regexMatch, prefix]
+                usedPrefix = regexMatch[0]
+                break
+              }
+            } else {
+              const prefixStr = String(prefix)
+              if (m.text.startsWith(prefixStr)) {
+                match = [[prefixStr], new RegExp(str2Regex(prefixStr))]
+                usedPrefix = prefixStr
+                break
+              }
             }
           }
         }
 
-        if (typeof plugin.before === "function") {
-          if (
-            await plugin.before.call(this, m, {
-              match,
-              conn: this,
-              isROwner,
-              isOwner,
-              isPrems,
-            })
-          )
-            continue
-        }
-
-        if (typeof plugin !== "function") continue
-
-        if (match && usedPrefix) {
+        if (match && usedPrefix && m.text) {
           const noPrefix = m.text.replace(usedPrefix, "")
           let [command, ...args] = noPrefix.trim().split` `.filter((v) => v)
           args = args || []
           const _args = noPrefix.trim().split` `.slice(1)
           const text = _args.join` `
           command = (command || "").toLowerCase()
-          const fail = plugin.fail || global.dfail
+          const fail = pluginData.fail || global.dfail
 
-          const isAccept =
-            plugin.command instanceof RegExp
-              ? plugin.command.test(command)
-              : Array.isArray(plugin.command)
-                ? plugin.command.some((cmd) => (cmd instanceof RegExp ? cmd.test(command) : cmd === command))
-                : typeof plugin.command === "string"
-                  ? plugin.command === command
-                  : false
+          let isAccept = false
+          let commandList = pluginData.command || pluginData.usage
+          
+          if (commandList) {
+            if (commandList instanceof RegExp) {
+              isAccept = commandList.test(command)
+            } else if (Array.isArray(commandList)) {
+              isAccept = commandList.some((cmd) => 
+                cmd instanceof RegExp ? cmd.test(command) : cmd === command
+              )
+            } else if (typeof commandList === "string") {
+              isAccept = commandList === command
+            }
+          }
 
           if (!isAccept) continue
           
@@ -169,37 +241,41 @@ module.exports = {
             if (user && user.banned) return
           }
 
-          if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
+          if (pluginData.rowner && pluginData.owner && !(isROwner || isOwner)) {
             fail("owner", m, this)
             continue
           }
-          if (plugin.rowner && !isROwner) {
+          if (pluginData.rowner && !isROwner) {
             fail("rowner", m, this)
             continue
           }
-          if (plugin.owner && !isOwner) {
+          if (pluginData.owner && !isOwner) {
             fail("owner", m, this)
             continue
           }
-          if (plugin.premium && !isPrems) {
+          if (pluginData.premium && !isPrems) {
             fail("premium", m, this)
             continue
           }
-          if (plugin.group && !m.isGroup) {
+          if (pluginData.group && !m.isGroup) {
             fail("group", m, this)
             continue
           }
-          if (plugin.private && m.isGroup) {
+          if (pluginData.private && m.isGroup) {
             fail("private", m, this)
+            continue
+          }
+          if (pluginData.admin && !m.isAdmin) {
+            fail("admin", m, this)
             continue
           }
 
           m.isCommand = true
-          const xp = "exp" in plugin ? Number.parseInt(plugin.exp) : 17
+          const xp = "exp" in pluginData ? Number.parseInt(pluginData.exp) : 17
           if (xp > 200) m.reply("Ngecit -_-")
           else m.exp += xp
 
-          if (!isPrems && plugin.limit && global.db.data.users[m.sender].limit < plugin.limit * 1) {
+          if (!isPrems && pluginData.limit && global.db.data.users[m.sender].limit < pluginData.limit * 1) {
             await this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
             continue
           }
@@ -213,14 +289,20 @@ module.exports = {
             command,
             text,
             conn: this,
+            client: this,
             isROwner,
             isOwner,
             isPrems,
+            isPrefix: usedPrefix,
+            participants: m.participants || [],
+            isBotAdmin: m.isBotAdmin,
+            isAdmin: m.isAdmin,
+            Func: global.Func || {}
           }
 
           try {
-            const result = await plugin.call(this, m, extra)
-            if (!isPrems) m.limit = m.limit || plugin.limit || false
+            const result = await pluginHandler.call(this, m, extra)
+            if (!isPrems) m.limit = m.limit || pluginData.limit || false
           } catch (e) {
             if (isRealError(e)) {
               m.error = e
@@ -249,9 +331,9 @@ module.exports = {
               }
             }
           } finally {
-            if (typeof plugin.after === "function") {
+            if (typeof pluginData.after === "function") {
               try {
-                await plugin.after.call(this, m, extra)
+                await pluginData.after.call(this, m, extra)
               } catch (e) {
                 console.error(`Plugin After Error (${m.plugin}):`, e)
               }
