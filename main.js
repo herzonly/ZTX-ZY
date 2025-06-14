@@ -1,3 +1,4 @@
+// ZTX || HERZA || NGT || DONT DELETE THIS WM
 const { Telegraf } = require("telegraf")
 const fs = require("fs")
 const path = require("path")
