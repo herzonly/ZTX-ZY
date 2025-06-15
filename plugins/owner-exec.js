@@ -1,35 +1,96 @@
 let syntaxerror = require('syntax-error')
 let util = require('util')
 
-let handler  = async (m, _2) => {
-  let { conn, usedPrefix, noPrefix, args, groupMetadata } = _2
+function escapeMarkdown(text) {
+  return text.toString()
+    .replace(/[_*[\]()~`>#+=|{}.!-]/g, '\\$&')
+}
+
+function safeCodeBlock(content) {
+  if (!content) return ''
+  const escaped = content.toString().replace(/```/g, '`‌`‌`')
+  return '```\n' + escaped + '\n```'
+}
+
+const handler = async (m, extra) => {
+  const { conn, usedPrefix, noPrefix, args, groupMetadata } = extra
   let _return
   let _syntax = ''
   let _text = (/^=/.test(usedPrefix) ? 'return ' : '') + noPrefix
-  let old = m.exp * 1 
+  const old = m.exp * 1 
+  
   try {
     let i = 15
-    let f = {
+    const f = {
       exports: {}
     }
-    let exec = new (async () => {}).constructor('print', 'm', 'handler', 'require', 'conn', 'Array', 'process', 'args', 'groupMetadata', 'module', 'exports', 'argument', _text)
-    _return = await exec.call(conn, (...args) => {
+    
+    const print = (...args) => {
       if (--i < 1) return
       console.log(...args)
-      return conn.reply(m.chat, util.format(...args), m)
-    }, m, handler, require, conn, CustomArray, process, args, groupMetadata, f, f.exports, [conn, _2])
+      const formattedOutput = util.format(...args)
+      return conn.reply(m.chat, escapeMarkdown(formattedOutput), m)
+    }
+    
+    const context = {
+      print,
+      m,
+      handler,
+      require,
+      conn,
+      Array: CustomArray,
+      process,
+      args,
+      groupMetadata,
+      module: f,
+      exports: f.exports,
+      argument: [conn, extra],
+      console,
+      Buffer,
+      JSON,
+      Math,
+      Date,
+      RegExp,
+      String,
+      Number,
+      Boolean,
+      Object,
+      Array: Array,
+      Error,
+      Promise,
+      setTimeout,
+      setInterval,
+      clearTimeout,
+      clearInterval
+    }
+    
+    const contextKeys = Object.keys(context)
+    const contextValues = Object.values(context)
+    
+    const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor
+    const exec = new AsyncFunction(...contextKeys, _text)
+    
+    _return = await exec.apply(conn, contextValues)
+    
   } catch (e) {
-    let err = await syntaxerror(_text, 'Execution Function', {
+    const err = syntaxerror(_text, 'Execution Function', {
       allowReturnOutsideFunction: true,
       allowAwaitOutsideFunction: true
     })
-    if (err) _syntax = '```' + err + '```\n\n'
+    if (err) _syntax = safeCodeBlock(err) + '\n\n'
     _return = e
   } finally {
-    conn.reply(m.chat, _syntax + util.format(_return), m)
+    const finalOutput = _syntax + escapeMarkdown(util.format(_return))
+    if (finalOutput.length > 4096) {
+      await conn.reply(m.chat, 'Output terlalu panjang, dipotong...', m)
+      await conn.reply(m.chat, finalOutput.substring(0, 4000) + '...', m)
+    } else {
+      await conn.reply(m.chat, finalOutput, m)
+    }
     m.exp = old
   }
 }
+
 handler.help = ['> ', '=> ']
 handler.tags = ['advanced']
 handler.customPrefix = /^=?> /
@@ -43,4 +104,4 @@ class CustomArray extends Array {
     if (typeof args[0] == 'number') return super(Math.min(args[0], 10000))
     else return super(...args)
   }
-  }
+}
