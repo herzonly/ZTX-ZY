@@ -11,7 +11,7 @@ const conn = new Telegraf(global.token)
 
 function getWITATime() {
   const now = new Date()
-  const witaTime = new Date(now.getTime() + 7 * 60 * 60 * 1000)
+  const witaTime = new Date(now.getTime() + 8 * 60 * 60 * 1000)
   const options = {
     weekday: "short",
     year: "numeric",
@@ -24,7 +24,7 @@ function getWITATime() {
     timeZoneName: "longOffset",
   }
   const formatted = witaTime.toLocaleString("en-US", options)
-  return `[${formatted.replace(/GMT\+7/, "GMT+0700")} (Western Indonesia Time)]`
+  return `[${formatted.replace(/GMT\+8/, "GMT+0800")} (Western Indonesia Time)]`
 }
 
 conn.logger = {
@@ -120,18 +120,18 @@ global.reload = (event, filePath) => {
     if (fullFilePath in require.cache) {
       delete require.cache[fullFilePath]
       if (fs.existsSync(fullFilePath)) {
-        conn.logger.info(`♻️ Re-requiring plugin '${filePath}'`)
+        conn.logger.info(`Re-requiring plugin '${filePath}'`)
       } else {
-        conn.logger.warn(`🗑️ Deleted plugin '${filePath}'`)
+        conn.logger.warn(`Deleted plugin '${filePath}'`)
         return delete global.plugins[filePath]
       }
     } else {
-      conn.logger.info(`🔁 Requiring new plugin '${filePath}'`)
+      conn.logger.info(`Requiring new plugin '${filePath}'`)
     }
 
     const errorCheck = syntaxError(fs.readFileSync(fullFilePath), filePath)
     if (errorCheck) {
-      conn.logger.error(`❌ Syntax error while loading '${filePath}':\n${errorCheck}`)
+      conn.logger.error(`Syntax error while loading '${filePath}':\n${errorCheck}`)
     } else {
       try {
         global.plugins[filePath] = require(fullFilePath)
@@ -184,7 +184,11 @@ function smsg(ctx) {
     })
   }
 
-  M.fakeObj = ctx
+  const ctxCopy = JSON.parse(JSON.stringify(ctx, (key, value) => {
+    if (key === 'token') return '[HIDDEN]'
+    return value
+  }))
+  M.fakeObj = ctxCopy
 
   M.reply = async (text, options = {}) => {
     return await conn.reply(M.chat, text, { message_id: M.id }, options)
@@ -201,11 +205,37 @@ function smsg(ctx) {
   }
 
   if (m.reply_to_message) {
+    const quotedCtxCopy = JSON.parse(JSON.stringify(ctx, (key, value) => {
+      if (key === 'token') return '[HIDDEN]'
+      return value
+    }))
+    
     M.quoted = {
       text: m.reply_to_message.text || m.reply_to_message.caption || "",
+      mtype: Object.keys(m.reply_to_message)[0],
+      id: m.reply_to_message.message_id,
+      chat: ctx.chat.id,
       sender: m.reply_to_message.from.id,
-      message_id: m.reply_to_message.message_id,
+      fromMe: m.reply_to_message.from.is_bot,
+      name: m.reply_to_message.from.first_name || m.reply_to_message.from.username || "Unknown",
+      firstname: m.reply_to_message.from.first_name || "",
+      lastname: m.reply_to_message.from.last_name || "",
+      usertag: m.reply_to_message.from.username || "",
       isBot: m.reply_to_message.from.is_bot,
+      isGroup: ctx.chat.type === "group" || ctx.chat.type === "supergroup",
+      message_id: m.reply_to_message.message_id,
+      mentionedJid: [],
+      fakeObj: quotedCtxCopy,
+      reply: async (text, options = {}) => {
+        return await conn.reply(M.chat, text, { message_id: m.reply_to_message.message_id }, options)
+      },
+      copy: () => M.quoted,
+      forward: async (jid) => {
+        return await conn.telegram.forwardMessage(jid, M.chat, m.reply_to_message.message_id)
+      },
+      delete: async () => {
+        return await conn.telegram.deleteMessage(M.chat, m.reply_to_message.message_id)
+      },
       download: async () => {
         if (m.reply_to_message.photo) {
           const fileId = m.reply_to_message.photo[m.reply_to_message.photo.length - 1].file_id
@@ -223,6 +253,14 @@ function smsg(ctx) {
         }
         return null
       },
+    }
+
+    if (m.reply_to_message.entities) {
+      m.reply_to_message.entities.forEach((entity) => {
+        if (entity.type === "mention") {
+          M.quoted.mentionedJid.push(entity.user?.id)
+        }
+      })
     }
   }
 
@@ -267,18 +305,22 @@ async function downloadFile(filePath) {
 }
 
 conn.use(async (ctx, next) => {
-  if (ctx.message || ctx.callback_query) {
-    const m = smsg(ctx)
-    
-    if (m) {
-      await require("./handler").handler.call(conn, m)
+  try {
+    if (ctx.message || ctx.callback_query) {
+      const m = smsg(ctx)
+      
+      if (m) {
+        await require("./handler").handler.call(conn, m)
+      }
+    } else if (ctx.myChatMember) {
+      await require("./handler").participantsUpdate.call(conn, ctx)
+    } else if (ctx.chatMember) {
+      await require("./handler").participantsUpdate.call(conn, ctx)
     }
-  } else if (ctx.myChatMember) {
-    await require("./handler").participantsUpdate.call(conn, ctx)
-  } else if (ctx.chatMember) {
-    await require("./handler").participantsUpdate.call(conn, ctx)
+    return next()
+  } catch (e) {
+    console.error("Middleware error:", e)
   }
-  return next()
 })
 
 conn.on('new_chat_members', async (ctx) => {
@@ -325,16 +367,43 @@ async function checkMediaSupport() {
   }
 
   if (!global.support.magick) {
-    conn.logger.warn("Please install ImageMagick for sending IMAGES (sudo apt install ffmpeg)")
+    conn.logger.warn("Please install ImageMagick for sending IMAGES (sudo apt install imagemagick)")
   }
   
 }
 
+async function launchBot() {
+  let retryCount = 0
+  const maxRetries = 5
+  const retryDelay = 5000 
+
+  while (retryCount < maxRetries) {
+    try {
+      await conn.launch()
+      conn.logger.info("Bot launched successfully")
+      break
+    } catch (err) {
+      retryCount++
+      conn.logger.error(`Bot launch attempt ${retryCount} failed:`, err.message)
+      
+      if (err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND' || err.code === 'ECONNRESET') {
+        if (retryCount < maxRetries) {
+          conn.logger.info(`Retrying in ${retryDelay/1000} seconds...`)
+          await new Promise(resolve => setTimeout(resolve, retryDelay))
+        } else {
+          conn.logger.error("Max retries reached. Check your internet connection and bot token.")
+        }
+      } else {
+        throw err 
+      }
+    }
+  }
+}
+
 checkMediaSupport()
   .then(() => conn.logger.info("Quick Test Done"))
+  .then(() => launchBot())
   .catch(console.error)
-
-conn.launch()
 
 process.once("SIGINT", () => conn.stop("SIGINT"))
 process.once("SIGTERM", () => conn.stop("SIGTERM"))
