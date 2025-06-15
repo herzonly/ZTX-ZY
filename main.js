@@ -164,6 +164,10 @@ function smsg(ctx) {
   M.sender = ctx.from.id
   M.fromMe = ctx.from.is_bot
   M.name = ctx.from.first_name || ctx.from.username || "Unknown"
+  M.firstname = ctx.from.first_name || ""
+  M.lastname = ctx.from.last_name || ""
+  M.usertag = ctx.from.username || ""
+  M.isBot = ctx.from.is_bot
   M.isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup"
   M.mentionedJid = []
 
@@ -201,6 +205,7 @@ function smsg(ctx) {
       text: m.reply_to_message.text || m.reply_to_message.caption || "",
       sender: m.reply_to_message.from.id,
       message_id: m.reply_to_message.message_id,
+      isBot: m.reply_to_message.from.is_bot,
       download: async () => {
         if (m.reply_to_message.photo) {
           const fileId = m.reply_to_message.photo[m.reply_to_message.photo.length - 1].file_id
