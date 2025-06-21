@@ -140,6 +140,8 @@ module.exports = {
         }
       }
 
+      const processedCommands = new Set()
+
       for (const name in global.plugins) {
         const plugin = global.plugins[name]
         if (!plugin) continue
@@ -187,9 +189,24 @@ module.exports = {
         let usedPrefix = ""
 
         if (m.text) {
+          let textToProcess = m.text
+          
+          if (m.isGroup && textToProcess.includes('@')) {
+            const botUsername = global.botname?.toLowerCase() || 'bot'
+            const mentions = textToProcess.match(/@\w+/g) || []
+            
+            for (const mention of mentions) {
+              const mentionName = mention.slice(1).toLowerCase()
+              if (mentionName.includes(botUsername) || mentionName.includes('ztxzy_bot')) {
+                textToProcess = textToProcess.replace(mention, '').trim()
+                break
+              }
+            }
+          }
+
           for (const prefix of _prefix) {
             if (prefix instanceof RegExp) {
-              const regexMatch = prefix.exec(m.text)
+              const regexMatch = prefix.exec(textToProcess)
               if (regexMatch) {
                 match = [regexMatch, prefix]
                 usedPrefix = regexMatch[0]
@@ -197,7 +214,7 @@ module.exports = {
               }
             } else {
               const prefixStr = String(prefix)
-              if (m.text.startsWith(prefixStr)) {
+              if (textToProcess.startsWith(prefixStr)) {
                 match = [[prefixStr], new RegExp(str2Regex(prefixStr))]
                 usedPrefix = prefixStr
                 break
@@ -207,7 +224,22 @@ module.exports = {
         }
 
         if (match && usedPrefix && m.text) {
-          const noPrefix = m.text.replace(usedPrefix, "")
+          let textToProcess = m.text
+          
+          if (m.isGroup && textToProcess.includes('@')) {
+            const botUsername = global.botname?.toLowerCase() || 'bot'
+            const mentions = textToProcess.match(/@\w+/g) || []
+            
+            for (const mention of mentions) {
+              const mentionName = mention.slice(1).toLowerCase()
+              if (mentionName.includes(botUsername) || mentionName.includes('ztxzy_bot')) {
+                textToProcess = textToProcess.replace(mention, '').trim()
+                break
+              }
+            }
+          }
+
+          const noPrefix = textToProcess.replace(usedPrefix, "")
           let [command, ...args] = noPrefix.trim().split` `.filter((v) => v)
           args = args || []
           const _args = noPrefix.trim().split` `.slice(1)
@@ -231,6 +263,10 @@ module.exports = {
           }
 
           if (!isAccept) continue
+
+          const commandKey = `${m.sender}_${command}_${Date.now()}`
+          if (processedCommands.has(commandKey)) continue
+          processedCommands.add(commandKey)
           
           m.plugin = name
 
@@ -300,45 +336,47 @@ module.exports = {
             Func: global.Func || {}
           }
 
-          try {
-            const result = await pluginHandler.call(this, m, extra)
-            if (!isPrems) m.limit = m.limit || pluginData.limit || false
-          } catch (e) {
-            if (isRealError(e)) {
-              m.error = e
-              console.error(`Plugin Error (${m.plugin}):`, e)
-              const text = util.format(e)
-              for (const ownerId of global.ownerid) {
+          setImmediate(async () => {
+            try {
+              const result = await pluginHandler.call(this, m, extra)
+              if (!isPrems) m.limit = m.limit || pluginData.limit || false
+            } catch (e) {
+              if (isRealError(e)) {
+                m.error = e
+                console.error(`Plugin Error (${m.plugin}):`, e)
+                const text = util.format(e)
+                for (const ownerId of global.ownerid) {
+                  try {
+                    await this.reply(
+                      ownerId,
+                      `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``
+                    )
+                  } catch (notifyError) {
+                    console.error("Failed to notify owner:", notifyError)
+                  }
+                }
                 try {
-                  await this.reply(
-                    ownerId,
-                    `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``
-                  )
-                } catch (notifyError) {
-                  console.error("Failed to notify owner:", notifyError)
+                  await m.reply(text)
+                } catch (replyError) {
+                  console.error("Failed to reply error to user:", replyError)
+                }
+              } else {
+                try {
+                  await m.reply(String(e))
+                } catch (replyError) {
+                  console.error("Failed to reply to user:", replyError)
                 }
               }
-              try {
-                await m.reply(text)
-              } catch (replyError) {
-                console.error("Failed to reply error to user:", replyError)
-              }
-            } else {
-              try {
-                await m.reply(String(e))
-              } catch (replyError) {
-                console.error("Failed to reply to user:", replyError)
+            } finally {
+              if (typeof pluginData.after === "function") {
+                try {
+                  await pluginData.after.call(this, m, extra)
+                } catch (e) {
+                  console.error(`Plugin After Error (${m.plugin}):`, e)
+                }
               }
             }
-          } finally {
-            if (typeof pluginData.after === "function") {
-              try {
-                await pluginData.after.call(this, m, extra)
-              } catch (e) {
-                console.error(`Plugin After Error (${m.plugin}):`, e)
-              }
-            }
-          }
+          })
           
           break
         }
