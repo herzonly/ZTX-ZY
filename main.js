@@ -158,7 +158,7 @@ function smsg(ctx) {
   const M = {}
 
   M.text = m.text || m.caption || ""
-  M.mtype = Object.keys(m)[0]
+  M.mtype = Object.keys(m)[1] || Object.keys(m)[0]
   M.id = m.message_id
   M.chat = ctx.chat.id
   M.sender = ctx.from.id
@@ -212,7 +212,7 @@ function smsg(ctx) {
     
     M.quoted = {
       text: m.reply_to_message.text || m.reply_to_message.caption || "",
-      mtype: Object.keys(m.reply_to_message)[0],
+      mtype: Object.keys(m.reply_to_message)[1] || Object.keys(m.reply_to_message)[0],
       id: m.reply_to_message.message_id,
       chat: ctx.chat.id,
       sender: m.reply_to_message.from.id,
@@ -384,7 +384,7 @@ async function launchBot() {
       break
     } catch (err) {
       retryCount++
-      conn.logger.error(`Bot launch attempt ${retryCount} failed:`, err.message)
+      conn.logger.error(`Bot launch attempt ${retryCount} failed: ${err.message}`)
       
       if (err.code === 'ETIMEDOUT' || err.code === 'ENOTFOUND' || err.code === 'ECONNRESET') {
         if (retryCount < maxRetries) {
