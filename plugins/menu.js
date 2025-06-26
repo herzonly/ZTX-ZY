@@ -100,7 +100,7 @@ const handler = async (m, { conn }) => {
   menuText += `📋 Total Commands: ${totalCommands}\n\n`
   menuText += `💡 Tips: Gunakan /daftar untuk mendaftar jika belum terdaftar`
 
-  await conn.sendMessage(m.chat, { video: { url: "https://file.idnet.my.id/api/preview.php?file=v00xsibv.mp4" },
+  await conn.sendMessage(m.chat, { video: { url: "https://file.idnet.my.id/api/preview.php?file=jspfr1vc.mp4" },
   caption: menuText
                               }, { quoted: { message_id: m.id } })
 }
