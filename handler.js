@@ -1,12 +1,28 @@
 const fs = require("fs")
 const util = require("util")
 const chalk = require("chalk")
+const moment = require("moment-timezone")
 
 const isNumber = (x) => typeof x === "number" && !isNaN(x)
 const delay = (ms) => isNumber(ms) && new Promise((resolve) => setTimeout(resolve, ms))
 
 function isRealError(error) {
   return error instanceof Error || (error && error.constructor && error.constructor.name === "Error")
+}
+
+async function rlimit() {
+  const now = moment().tz("Asia/Makassar")
+  const resetTime = moment().tz("Asia/Makassar").startOf('day')
+  
+  if (now.isSameOrAfter(resetTime)) {
+    for (const userId in global.db.data.users) {
+      const user = global.db.data.users[userId]
+      if (user.lastReset !== resetTime.format('YYYY-MM-DD')) {
+        user.limit += 30
+        user.lastReset = resetTime.format('YYYY-MM-DD')
+      }
+    }
+  }
 }
 
 module.exports = {
@@ -20,6 +36,8 @@ module.exports = {
       m.exp = 0
       m.limit = false
 
+      await rlimit()
+
       if (m.callbackQuery && !m.isSimulated) {
         await this.telegram.answerCbQuery(m.callbackQuery.id)
       }
@@ -30,7 +48,7 @@ module.exports = {
         if (!isNumber(user.saldo)) user.saldo = 0
         if (!isNumber(user.exp)) user.exp = 0
         if (!isNumber(user.level)) user.level = 0
-        if (!isNumber(user.limit)) user.limit = 10
+        if (!isNumber(user.limit)) user.limit = 30
         if (!("registered" in user)) user.registered = false
         if (!("premium" in user)) user.premium = false
         if (!("banned" in user)) user.banned = false
@@ -41,12 +59,13 @@ module.exports = {
         if (!isNumber(user.chat)) user.chat = 0
         if (!isNumber(user.chatTotal)) user.chatTotal = 0
         if (!isNumber(user.lastseen)) user.lastseen = 0
+        if (!("lastReset" in user)) user.lastReset = moment().tz("Asia/Makassar").format('YYYY-MM-DD')
       } else {
         global.db.data.users[m.sender] = {
           saldo: 0,
           exp: 0,
           level: 0,
-          limit: 10,
+          limit: 30,
           registered: false,
           premium: false,
           banned: false,
@@ -57,6 +76,7 @@ module.exports = {
           chat: 0,
           chatTotal: 0,
           lastseen: 0,
+          lastReset: moment().tz("Asia/Makassar").format('YYYY-MM-DD')
         }
       }
 
@@ -80,10 +100,12 @@ module.exports = {
         }
       }
 
-      const isROwner = global.ownerid.includes(m.sender.toString())
+      const isROwner = global.ownerid && global.ownerid.length > 0 ? global.ownerid.includes(m.sender.toString()) : false
       const isOwner = isROwner || m.fromMe
-      const isPrems =
-        isROwner || global.db.data.users[m.sender].premiumTime > 0 || global.db.data.users[m.sender].premium
+      const isPrems = isROwner || 
+        (global.premid && global.premid.length > 0 ? global.premid.includes(m.sender.toString()) : false) ||
+        global.db.data.users[m.sender].premiumTime > 0 || 
+        global.db.data.users[m.sender].premium
 
       try {
         require("./lib/print")(m, this)
@@ -311,9 +333,21 @@ module.exports = {
           if (xp > 200) m.reply("Ngecit -_-")
           else m.exp += xp
 
-          if (!isPrems && pluginData.limit && global.db.data.users[m.sender].limit < pluginData.limit * 1) {
-            await this.reply(m.chat, `Limit anda habis, silahkan tunggu reset limit`, { message_id: m.id })
-            continue
+          // CEK DAN KURANGI LIMIT SEBELUM MENJALANKAN PLUGIN
+          if (!isPrems && !isOwner && pluginData.limit) {
+            const requiredLimit = pluginData.limit === true ? 1 : pluginData.limit
+            if (global.db.data.users[m.sender].limit < requiredLimit) {
+              if (global.db.data.users[m.sender].limit === 0) {
+                await this.reply(m.chat, `Limit kamu habis`, m)
+              } else {
+                await this.reply(m.chat, `Limit tidak mencukupi, membutuhkan ${requiredLimit}, dan kamu hanya mempunyai ${global.db.data.users[m.sender].limit}`, m)
+              }
+              continue
+            }
+            
+            // KURANGI LIMIT DI SINI (SEBELUM PLUGIN DIJALANKAN)
+            global.db.data.users[m.sender].limit -= requiredLimit
+            m.limit = requiredLimit
           }
 
           const extra = {
@@ -336,47 +370,56 @@ module.exports = {
             Func: global.Func || {}
           }
 
-          setImmediate(async () => {
-            try {
-              const result = await pluginHandler.call(this, m, extra)
-              if (!isPrems) m.limit = m.limit || pluginData.limit || false
-            } catch (e) {
-              if (isRealError(e)) {
-                m.error = e
-                console.error(`Plugin Error (${m.plugin}):`, e)
-                const text = util.format(e)
-                for (const ownerId of global.ownerid) {
-                  try {
-                    await this.reply(
-                      ownerId,
-                      `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``
-                    )
-                  } catch (notifyError) {
-                    console.error("Failed to notify owner:", notifyError)
-                  }
-                }
+          try {
+            const result = await pluginHandler.call(this, m, extra)
+            
+            // KIRIM NOTIFIKASI LIMIT YANG DIGUNAKAN
+            if (!isPrems && !isOwner && pluginData.limit && m.limit) {
+              await this.reply(m.chat, `✅ ${m.limit} limit terpakai`, m)
+            }
+            
+          } catch (e) {
+            // JIKA PLUGIN ERROR, KEMBALIKAN LIMIT YANG SUDAH DIPOTONG
+            if (!isPrems && !isOwner && pluginData.limit && m.limit) {
+              global.db.data.users[m.sender].limit += m.limit
+              console.log(`Limit ${m.limit} dikembalikan karena plugin error`)
+            }
+            
+            if (isRealError(e)) {
+              m.error = e
+              console.error(`Plugin Error (${m.plugin}):`, e)
+              const text = util.format(e)
+              for (const ownerId of global.ownerid) {
                 try {
-                  await m.reply(text)
-                } catch (replyError) {
-                  console.error("Failed to reply error to user:", replyError)
-                }
-              } else {
-                try {
-                  await m.reply(String(e))
-                } catch (replyError) {
-                  console.error("Failed to reply to user:", replyError)
+                  await this.reply(
+                    ownerId,
+                    `*Plugin Error:* ${m.plugin}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Command:* ${usedPrefix}${command} ${args.join(" ")}\n\n\`\`\`${text}\`\`\``
+                  )
+                } catch (notifyError) {
+                  console.error("Failed to notify owner:", notifyError)
                 }
               }
-            } finally {
-              if (typeof pluginData.after === "function") {
-                try {
-                  await pluginData.after.call(this, m, extra)
-                } catch (e) {
-                  console.error(`Plugin After Error (${m.plugin}):`, e)
-                }
+              try {
+                await m.reply(text)
+              } catch (replyError) {
+                console.error("Failed to reply error to user:", replyError)
+              }
+            } else {
+              try {
+                await m.reply(String(e))
+              } catch (replyError) {
+                console.error("Failed to reply to user:", replyError)
               }
             }
-          })
+          } finally {
+            if (typeof pluginData.after === "function") {
+              try {
+                await pluginData.after.call(this, m, extra)
+              } catch (e) {
+                console.error(`Plugin After Error (${m.plugin}):`, e)
+              }
+            }
+          }
           
           break
         }
@@ -387,7 +430,8 @@ module.exports = {
       if (m) {
         if (m.sender && _user) {
           _user.exp += m.exp
-          _user.limit -= m.limit * 1
+          // HAPUS BARIS INI KARENA LIMIT SUDAH DIPOTONG DI ATAS
+          // _user.limit -= m.limit * 1
         }
 
         let stat
