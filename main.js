@@ -157,6 +157,10 @@ function smsg(ctx) {
   const m = ctx.message || ctx.callback_query.message
   const M = {}
 
+  if (ctx.chat.type === "channel") {
+    return null
+  }
+
   M.text = m.text || m.caption || ""
   M.mtype = Object.keys(m)[1] || Object.keys(m)[0]
   M.id = m.message_id
@@ -169,6 +173,11 @@ function smsg(ctx) {
   M.usertag = ctx.from.username || ""
   M.isBot = ctx.from.is_bot
   M.isGroup = ctx.chat.type === "group" || ctx.chat.type === "supergroup"
+  
+  if (M.isGroup) {
+    M.groupName = ctx.chat.title || "Unknown Group"
+  }
+  
   M.mentionedJid = []
 
   if (ctx.callback_query) {
