@@ -151,11 +151,23 @@ global.reloadHandler = () => {
   return require("./handler")
 }
 
-function smsg(ctx) {
+async function smsg(ctx) {
   if (!ctx.message && !ctx.callback_query) return null
 
   const m = ctx.message || ctx.callback_query.message
   const M = {}
+
+  const safeStringify = (obj) => {
+    const seen = new WeakSet();
+    return JSON.stringify(obj, (key, value) => {
+      if (key === 'token') return '[HIDDEN]';
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[Circular]';
+        seen.add(value);
+      }
+      return value;
+    });
+  }
 
   if (ctx.chat.type === "channel") {
     return null
@@ -176,6 +188,9 @@ function smsg(ctx) {
   
   if (M.isGroup) {
     M.groupName = ctx.chat.title || "Unknown Group"
+    M.isAdmin = await ctx.telegram.getChatMember(ctx.chat.id, ctx.from.id)
+      .then((member) => member.status === "administrator" || member.status === "creator")
+      .catch(() => false)
   }
   
   M.mentionedJid = []
@@ -193,10 +208,7 @@ function smsg(ctx) {
     })
   }
 
-  const ctxCopy = JSON.parse(JSON.stringify(ctx, (key, value) => {
-    if (key === 'token') return '[HIDDEN]'
-    return value
-  }))
+  const ctxCopy = JSON.parse(safeStringify(ctx));
   M.fakeObj = ctxCopy
 
   M.reply = async (text, options = {}) => {
@@ -214,10 +226,7 @@ function smsg(ctx) {
   }
 
   if (m.reply_to_message) {
-    const quotedCtxCopy = JSON.parse(JSON.stringify(ctx, (key, value) => {
-      if (key === 'token') return '[HIDDEN]'
-      return value
-    }))
+    const quotedCtxCopy = JSON.parse(safeStringify(ctx));
     
     M.quoted = {
       text: m.reply_to_message.text || m.reply_to_message.caption || "",
@@ -316,7 +325,7 @@ async function downloadFile(filePath) {
 conn.use(async (ctx, next) => {
   try {
     if (ctx.message || ctx.callback_query) {
-      const m = smsg(ctx)
+      const m = await smsg(ctx)
       
       if (m) {
         await require("./handler").handler.call(conn, m)
