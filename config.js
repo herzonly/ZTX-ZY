@@ -7,6 +7,7 @@ global.botname = "BOT_NAME"
 global.prefix = ["/", ".", "#", "!"]
 global.wib = 7
 global.wait = "Wait for a moment..."
+global.Func = require('./lib/function.js')
 
 let fs = require('fs');
 let chalk = require('chalk');
