@@ -1,7 +1,7 @@
 const fs = require("fs")
 const path = require("path")
 
-const handler = async (m, { conn }) => {
+const handler = async (m, { conn, Func }) => {
   const user = global.db.data.users[m.sender]
   const isOwner = global.ownerid.includes(m.sender.toString())
   const isPrems = global.premid.includes(m.sender.toString()) || user.premium || user.premiumTime > 0
@@ -101,7 +101,7 @@ const handler = async (m, { conn }) => {
   menuText += `💡 Tips: Gunakan /daftar untuk mendaftar jika belum terdaftar`
 
   await conn.sendMessage(m.chat, { video: { url: "https://file.idnet.my.id/api/preview.php?file=jspfr1vc.mp4" },
-  caption: menuText
+  caption: Func.escapeMarkdownV2Safe(menuText)
                               }, { quoted: { message_id: m.id } })
 }
 
