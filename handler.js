@@ -349,8 +349,9 @@ module.exports = {
           if (m.chat in global.db.data.chats || m.sender in global.db.data.users) {
             const chat = global.db.data.chats[m.chat]
             const user = global.db.data.users[m.sender]
-            if (chat?.isBanned || chat?.mute) return
-            if (user && user.banned) return
+            if ((chat?.isBanned || chat?.mute) && !isOwner && !m.isAdmin) return
+            if (user && user.banned && !isOwner) return
+            if (name !== '_enable.js' && user && chat?.mute && !m.isAdmin) return
           }
 
           if (pluginData.rowner && pluginData.owner && !(isROwner || isOwner)) {
