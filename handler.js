@@ -119,6 +119,7 @@ module.exports = {
         if (plugin.disabled) continue
 
         let beforeHandler = null
+        let callbackHandler = null
         let pluginData = plugin
 
         if (typeof plugin === 'function') {
@@ -126,17 +127,33 @@ module.exports = {
             beforeHandler = plugin.before
             pluginData = plugin
           }
+          if (plugin.callback && typeof plugin.callback === 'function') {
+            callbackHandler = plugin.callback
+            pluginData = plugin
+          }
         } else if (typeof plugin === 'object') {
           if (plugin.before && typeof plugin.before === 'function') {
             beforeHandler = plugin.before
+            pluginData = plugin
+          }
+          if (plugin.callback && typeof plugin.callback === 'function') {
+            callbackHandler = plugin.callback
             pluginData = plugin
           }
           else if (plugin.default && plugin.default.before && typeof plugin.default.before === 'function') {
             beforeHandler = plugin.default.before
             pluginData = plugin.default
           }
+          else if (plugin.default && plugin.default.callback && typeof plugin.default.callback === 'function') {
+            callbackHandler = plugin.default.callback
+            pluginData = plugin.default
+          }
           else if (plugin.run && plugin.run.before && typeof plugin.run.before === 'function') {
             beforeHandler = plugin.run.before
+            pluginData = plugin.run
+          }
+          else if (plugin.run && plugin.run.callback && typeof plugin.run.callback === 'function') {
+            callbackHandler = plugin.run.callback
             pluginData = plugin.run
           }
         }
@@ -158,6 +175,40 @@ module.exports = {
             }
           } catch (e) {
             console.error(`Plugin Before Error (${name}):`, e)
+          }
+        }
+      }
+
+      if (callbackHandler) {
+          try {
+            this.action(pluginData.callback_data, async (ctx) => {
+              await callbackHandler.call(this, m, {
+                conn: this,
+                command: ctx.callbackQuery?.data,
+                chat: ctx.chat.id,
+                from: ctx.from.id,
+                ctx
+              })
+
+              console.log(chalk.red.bold(`Action: ${ctx.callbackQuery?.data}`))
+            })
+            
+          } catch (e) {
+            console.error(`Plugin Callback Error (${name}):`, e)
+            if (isRealError(e)) {
+              const text = util.format(e)
+              for (const ownerId of global.ownerid) {
+                try {
+                  await this.reply(
+                    ownerId,
+                    `*Plugin Callback Error:* ${name}\n*Sender:* ${m.sender}\n*Chat:* ${m.chat}\n*Callback Data:* ${m.callbackQuery.data}\n\n\`\`\`${text}\`\`\``
+                  )
+                } catch (notifyError) {
+                  console.error("Failed to notify owner:", notifyError)
+                }
+              }
+            }
+            continue
           }
         }
       }
@@ -188,7 +239,10 @@ module.exports = {
             pluginHandler = plugin.run.async
             pluginData = plugin.run
           }
-          else if (typeof plugin.before === 'function' && !plugin.handler && !plugin.default && !plugin.run) {
+          else if (typeof plugin.before === 'function' &&  !plugin.callback && !plugin.handler && !plugin.default && !plugin.run) {
+            continue
+          }
+          else if (typeof plugin.callback === 'function' && !plugin.before && !plugin.handler && !plugin.default && !plugin.run) {
             continue
           }
           else {
